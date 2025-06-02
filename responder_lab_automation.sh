@@ -404,3 +404,4 @@ main() {
 # Ejecutar el script
 main "$@"
 main "$@"
+main "$@"
