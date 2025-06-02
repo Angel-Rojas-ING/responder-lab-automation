@@ -231,7 +231,7 @@ Si este script te ayudó en tus laboratorios de seguridad, ¡dale una estrella! 
 
 ```bash
 # Sígueme para más herramientas de ciberseguridad
-git clone https://github.com/tu-usuario/Responder-Hash-Capture-Lab.git
+git clone https://github.com/Angel-Rojas-ING/responder-lab-automation.git
 ```
 
 ---
