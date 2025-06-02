@@ -49,10 +49,10 @@ Herramienta educativa diseñada para automatizar la captura de hashes NTLMv2 med
 ### Opción 1: Descarga directa
 ```bash
 # Clonar el repositorio
-git clone https://github.com/tu-usuario/Responder-Hash-Capture-Lab.git
+https://github.com/Angel-Rojas-ING/responder-lab-automation.git
 
 # Entrar al directorio
-cd Responder-Hash-Capture-Lab
+cd responder-lab-automation
 
 # Dar permisos de ejecución
 chmod +x responder_lab_automation.sh
